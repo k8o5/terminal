@@ -4,6 +4,49 @@ import sys
 import datetime
 import xml.etree.ElementTree as ET
 import subprocess
+from bs4 import BeautifulSoup
+
+def webscrape_article(url):
+    try:
+        print(f"Fetching content from {url}...")
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, 'html.parser')
+
+        # Try to find the main article content using common selectors
+        selectors = [
+            'article',
+            '.article-body',
+            '#article-body',
+            '.main-content',
+            '#main-content',
+            '.post-content',
+        ]
+        
+        article_content = None
+        for selector in selectors:
+            article_content = soup.select_one(selector)
+            if article_content:
+                break
+        
+        # If a specific container is found, get paragraphs from it.
+        # Otherwise, fall back to the whole page.
+        if article_content:
+            paragraphs = article_content.find_all('p')
+        else:
+            paragraphs = soup.find_all('p')
+
+        article_text = '\n'.join(p.get_text() for p in paragraphs)
+
+        print("\n--- Article Content ---")
+        print(article_text)
+        print("\n--- End of Article Content ---")
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching article: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred during web scraping: {e}")
 
 def get_stock_data(symbol):
     """Fetches and displays a stock's current price, trend chart, and news for a given symbol."""
@@ -91,10 +134,10 @@ def get_stock_data(symbol):
         print(f"Volume: {regular_market_volume:,}" if regular_market_volume is not None else "Volume: N/A")
         if market_cap: print(f"Mkt Cap: {market_cap:,}")
         if pe_ratio: print(f"P/E Ratio (TTM): {pe_ratio:.2f}")
-        print("-"*50)
+        print("-" * 50)
         if prices: print(f"Price ({len(prices)} days): {price_sparkline}  [{min(prices):.2f} - {max(prices):.2f}]")
         if volumes: print(f"Volume ({len(volumes)} days): {volume_sparkline}  (Avg: {avg_volume:,.0f})")
-        print("-"*50)
+        print("-" * 50)
         if data_timestamp:
             dt_object = datetime.datetime.fromtimestamp(data_timestamp)
             print(f"Data as of: {dt_object.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -126,8 +169,7 @@ def get_stock_data(symbol):
                                 break
                             choice_idx = int(choice) - 1
                             if 0 <= choice_idx < len(news_links):
-                                print(f"Opening {news_links[choice_idx]}...")
-                                subprocess.run(["termux-open-url", news_links[choice_idx]])
+                                webscrape_article(news_links[choice_idx])
                                 break
                             else:
                                 print("Invalid number. Please try again.")
@@ -147,16 +189,14 @@ def get_stock_data(symbol):
         print(f"An unexpected error occurred: {e}")
 
 if __name__ == "__main__":
-    # --- Main execution block ---
-    # Prompt the user for a stock symbol.
-    symbol_input = input("Enter a stock ticker symbol (e.g., AAPL, GOOG, MSFT): ").strip()
-
-    if not symbol_input:
-        print("No symbol entered. Exiting.")
+    if len(sys.argv) > 1:
+        # If the first argument is a URL, scrape it
+        if sys.argv[1].startswith('http'):
+            webscrape_article(sys.argv[1])
+        # Otherwise, assume it's a stock symbol
+        else:
+            get_stock_data(sys.argv[1])
     else:
-        # Call the main function with the user's input.
-        get_stock_data(symbol_input)
-    
-    # Keep the console window open until the user presses Enter.
-    if sys.stdin.isatty():
-        input("\nPress Enter to exit...")
+        print("Usage:")
+        print("  To get stock data: python buh.py <STOCK_SYMBOL>")
+        print("  To scrape an article: python buh.py <URL>")
